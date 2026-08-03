@@ -95,20 +95,14 @@ fun PhotoWidgetConfigureContentTab(
     val importFromWidgetSheetState: AppSheetState = rememberAppSheetState()
     val recentlyDeletedPhotoSheetState: AppSheetState = rememberAppSheetState()
 
-    var showGifReplaceDialog: Boolean by rememberSaveable { mutableStateOf(false) }
-
     PhotoWidgetConfigureContentTab(
         photoWidget = state.photoWidget,
+        showGifBatteryWarning = state.showGifBatteryWarning,
+        onDismissGifBatteryWarning = viewModel::dismissGifBatteryWarning,
         onChangeSourceClick = sourceSheetState::showBottomSheet,
         isImportAvailable = state.isImportAvailable,
         onImportClick = importFromWidgetSheetState::showBottomSheet,
-        onPickFromSourceClick = {
-            if (state.photoWidget.source == PhotoWidgetSource.GIF && state.photoWidget.photos.isNotEmpty()) {
-                showGifReplaceDialog = true
-            } else {
-                onPickFromSourceClick()
-            }
-        },
+        onPickFromSourceClick = onPickFromSourceClick,
         onPhotoClick = viewModel::previewPhoto,
         onReorderFinish = viewModel::reorderPhotos,
         onRemovedPhotoClick = { photo ->
@@ -119,34 +113,6 @@ fun PhotoWidgetConfigureContentTab(
         onEvenSplitClick = viewModel::applyEvenSplitSchedule,
         modifier = modifier,
     )
-
-    if (showGifReplaceDialog) {
-        AlertDialog(
-            onDismissRequest = { showGifReplaceDialog = false },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showGifReplaceDialog = false
-                        onPickFromSourceClick()
-                    },
-                    shapes = ButtonDefaults.shapes(),
-                ) {
-                    Text(text = stringResource(id = R.string.photo_widget_action_continue))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showGifReplaceDialog = false },
-                    shapes = ButtonDefaults.shapes(),
-                ) {
-                    Text(text = stringResource(id = R.string.photo_widget_action_cancel))
-                }
-            },
-            text = {
-                Text(text = stringResource(id = R.string.photo_widget_configure_pick_gif_replace))
-            },
-        )
-    }
 
     // region Sheets
     PhotoWidgetSourceBottomSheet(
@@ -181,6 +147,8 @@ fun PhotoWidgetConfigureContentTab(
     onReorderFinish: (List<LocalPhoto>) -> Unit,
     onRemovedPhotoClick: (LocalPhoto) -> Unit,
     modifier: Modifier = Modifier,
+    showGifBatteryWarning: Boolean = false,
+    onDismissGifBatteryWarning: () -> Unit = {},
     onSetPhotoTime: (LocalPhoto, Time) -> Unit = { _, _ -> },
     onClearPhotoTime: (LocalPhoto) -> Unit = {},
     onEvenSplitClick: () -> Unit = {},
@@ -201,6 +169,8 @@ fun PhotoWidgetConfigureContentTab(
         onSetPhotoTime = onSetPhotoTime,
         onClearPhotoTime = onClearPhotoTime,
         onEvenSplitClick = onEvenSplitClick,
+        showGifBatteryWarning = showGifBatteryWarning,
+        onDismissGifBatteryWarning = onDismissGifBatteryWarning,
         aspectRatio = photoWidget.aspectRatio,
         shapeId = photoWidget.shapeId,
         modifier = modifier.fillMaxSize(),
@@ -224,6 +194,8 @@ private fun PhotoPicker(
     onSetPhotoTime: (LocalPhoto, Time) -> Unit,
     onClearPhotoTime: (LocalPhoto) -> Unit,
     onEvenSplitClick: () -> Unit,
+    showGifBatteryWarning: Boolean,
+    onDismissGifBatteryWarning: () -> Unit,
     aspectRatio: PhotoWidgetAspectRatio,
     shapeId: String,
     modifier: Modifier = Modifier,
@@ -272,6 +244,8 @@ private fun PhotoPicker(
             removedPhotos = removedPhotos,
             source = source,
             onRemovedPhotoClick = onRemovedPhotoClick,
+            showGifBatteryWarning = showGifBatteryWarning,
+            onDismissGifBatteryWarning = onDismissGifBatteryWarning,
             aspectRatio = aspectRatio,
             shapeId = shapeId,
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -528,6 +502,8 @@ private fun PhotoPickerFooter(
     removedPhotos: List<LocalPhoto>,
     source: PhotoWidgetSource,
     onRemovedPhotoClick: (LocalPhoto) -> Unit,
+    showGifBatteryWarning: Boolean,
+    onDismissGifBatteryWarning: () -> Unit,
     aspectRatio: PhotoWidgetAspectRatio,
     shapeId: String,
     modifier: Modifier = Modifier,
@@ -585,7 +561,7 @@ private fun PhotoPickerFooter(
         }
 
         AnimatedVisibility(
-            visible = source == PhotoWidgetSource.GIF,
+            visible = source == PhotoWidgetSource.GIF && showGifBatteryWarning,
             modifier = Modifier.fillMaxWidth(),
             exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 2 }),
         ) {
@@ -594,6 +570,8 @@ private fun PhotoPickerFooter(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
+                showActionButton = true,
+                onActionButtonClick = onDismissGifBatteryWarning,
             )
         }
     }

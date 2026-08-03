@@ -74,6 +74,9 @@ import com.fibelatti.photowidget.ui.icons.NewWidget
 import com.fibelatti.photowidget.ui.icons.NewWidgetSelected
 import com.fibelatti.photowidget.ui.icons.Settings
 import com.fibelatti.photowidget.ui.icons.SettingsSelected
+import com.fibelatti.photowidget.ui.icons.Wallpaper
+import com.fibelatti.photowidget.ui.icons.WallpaperSelected
+import com.fibelatti.photowidget.wallpaper.WallpaperScreen
 import com.fibelatti.ui.component.rememberAppSheetState
 import com.fibelatti.ui.preview.PreviewAll
 import com.fibelatti.ui.theme.ExtendedTheme
@@ -333,6 +336,10 @@ fun HomeScreen(
             label = "Home_Navigation",
         ) { destination ->
             when (destination) {
+                HomeNavigationDestination.WALLPAPERS -> {
+                    WallpaperScreen()
+                }
+
                 HomeNavigationDestination.NEW_WIDGET -> {
                     NewWidgetScreen(
                         onCreateNewWidgetClick = onCreateNewWidgetClick,
@@ -447,6 +454,11 @@ private enum class HomeNavigationDestination(
     val iconSelected: ImageVector,
 ) {
 
+    WALLPAPERS(
+        label = R.string.photo_widget_home_wallpapers,
+        icon = AppIcons.Wallpaper,
+        iconSelected = AppIcons.WallpaperSelected,
+    ),
     NEW_WIDGET(
         label = R.string.photo_widget_home_new,
         icon = AppIcons.NewWidget,

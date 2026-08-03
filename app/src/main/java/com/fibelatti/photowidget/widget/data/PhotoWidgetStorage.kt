@@ -164,6 +164,55 @@ class PhotoWidgetStorage @Inject constructor(
         return internalFileStorage.newWidgetPhotosFromGif(directoryName = directoryName, source = source)
     }
 
+    suspend fun getGifFrameUris(appWidgetId: Int, gifId: String): List<Uri> {
+        val directoryName = getOrCreateDirectoryName(appWidgetId)
+        return internalFileStorage.getGifFrameUris(directoryName = directoryName, gifId = gifId)
+    }
+
+    suspend fun isGifPrepared(appWidgetId: Int, gifId: String): Boolean {
+        val directoryName = getOrCreateDirectoryName(appWidgetId)
+        return internalFileStorage.isGifPrepared(directoryName = directoryName, gifId = gifId)
+    }
+
+    suspend fun migrateLegacyGifWidgetIfNeeded(appWidgetId: Int) {
+        if (getWidgetSource(appWidgetId) != PhotoWidgetSource.GIF) return
+
+        val directoryName = getOrCreateDirectoryName(appWidgetId)
+        if (internalFileStorage.hasGifPlaylistLayout(directoryName)) {
+            // Enrich existing playlist items with gif metadata when loading from older caches.
+            return
+        }
+
+        val legacyFrames: List<LocalPhoto> = internalFileStorage.getWidgetPhotos(
+            directoryName = directoryName,
+            source = PhotoWidgetSource.GIF,
+        )
+        if (legacyFrames.isEmpty()) return
+
+        Timber.i("Migrating legacy GIF frames to playlist item %s", mapOf("appWidgetId" to appWidgetId))
+
+        val interval: Long = getWidgetGifInterval(appWidgetId)
+            .takeIf { it > 0 }
+            ?.coerceIn(GifFrames.MIN_INTERVAL_MS, GifFrames.MAX_INTERVAL_MS)
+            ?: 100L
+
+        val migrated = internalFileStorage.migrateLegacyFramesToGif(
+            directoryName = directoryName,
+            frames = legacyFrames,
+            interval = interval,
+        )
+        if (migrated == null) return
+
+        syncWidgetPhotos(
+            appWidgetId = appWidgetId,
+            currentPhotos = listOf(migrated),
+            removedPhotos = emptyList(),
+        )
+        clearDisplayedPhotos(appWidgetId = appWidgetId)
+        saveDisplayedPhoto(appWidgetId = appWidgetId, photoId = migrated.photoId)
+        saveWidgetGifInterval(appWidgetId = appWidgetId, interval = interval)
+    }
+
     suspend fun getNewDirPhotos(dirUri: Uri, sorting: DirectorySorting): List<LocalPhoto>? {
         if (dirUri.toString().endsWith("DCIM%2FCamera", ignoreCase = true)) {
             return null
@@ -184,6 +233,8 @@ class PhotoWidgetStorage @Inject constructor(
 
     fun loadWidgetPhotos(appWidgetId: Int): Flow<WidgetPhotos> = flow {
         Timber.i("Retrieving photos %s", mapOf("appWidgetId" to appWidgetId))
+
+        migrateLegacyGifWidgetIfNeeded(appWidgetId = appWidgetId)
 
         val excludedPhotos: Set<String> = getExcludedPhotoIds(appWidgetId = appWidgetId)
 
@@ -236,10 +287,20 @@ class PhotoWidgetStorage @Inject constructor(
         Timber.d("Widget source: $source")
 
         val directoryName: String = getOrCreateDirectoryName(appWidgetId)
-        val croppedPhotos: Map<String, LocalPhoto> = internalFileStorage.getWidgetPhotos(
-            directoryName = directoryName,
-            source = source,
-        ).associateBy { it.photoId }
+        val croppedPhotos: Map<String, LocalPhoto> = if (source == PhotoWidgetSource.GIF) {
+            internalFileStorage.listGifPlaylistItems(directoryName = directoryName)
+                .map { photo ->
+                    photo.copy(
+                        launcherUri = photo.croppedPhotoPath?.let { path -> uriPermissionGrantor(path) },
+                    )
+                }
+                .associateBy { it.photoId }
+        } else {
+            internalFileStorage.getWidgetPhotos(
+                directoryName = directoryName,
+                source = source,
+            ).associateBy { it.photoId }
+        }
 
         Timber.d("Cropped photos found: ${croppedPhotos.size}")
 
@@ -282,19 +343,26 @@ class PhotoWidgetStorage @Inject constructor(
 
         val source: PhotoWidgetSource = getWidgetSource(appWidgetId)
 
+        val directoryName: String = getOrCreateDirectoryName(appWidgetId)
+
         val localPhotos: Map<Boolean, List<LocalPhoto>> = localPhotoDao.getLocalPhotos(widgetId = appWidgetId)
-            .map {
-                LocalPhoto(
-                    photoId = it.photoId,
-                    croppedPhotoPath = it.croppedPhotoPath,
-                    originalPhotoPath = it.originalPhotoPath,
-                    externalUri = it.externalUri?.let(Uri::parse),
-                    launcherUri = if (source == PhotoWidgetSource.GIF && it.croppedPhotoPath != null) {
-                        uriPermissionGrantor(it.croppedPhotoPath)
+            .map { dto ->
+                var photo = LocalPhoto(
+                    photoId = dto.photoId,
+                    croppedPhotoPath = dto.croppedPhotoPath,
+                    originalPhotoPath = dto.originalPhotoPath,
+                    externalUri = dto.externalUri?.let(Uri::parse),
+                    timestamp = dto.timestamp,
+                )
+                if (source == PhotoWidgetSource.GIF) {
+                    photo = internalFileStorage.enrichGifPhoto(directoryName = directoryName, photo = photo)
+                }
+                photo.copy(
+                    launcherUri = if (source == PhotoWidgetSource.GIF && photo.croppedPhotoPath != null) {
+                        uriPermissionGrantor(photo.croppedPhotoPath)
                     } else {
                         null
                     },
-                    timestamp = it.timestamp,
                 )
             }
             .groupBy {
@@ -304,10 +372,29 @@ class PhotoWidgetStorage @Inject constructor(
             }
 
         return WidgetPhotos(
-            current = localPhotos[true].orEmpty(),
-            excluded = localPhotos[false].orEmpty(),
+            current = localPhotos[true].orEmpty().filter(::photoFileExists),
+            excluded = localPhotos[false].orEmpty().filter(::photoFileExists),
         ).also {
             Timber.d("Total local photos found: ${it.current.size} current, ${it.excluded.size} excluded.")
+        }
+    }
+
+    /**
+     * Drops local-cache entries whose files were deleted (e.g. after replacing a GIF) so loads and
+     * GIF playback never hand the widget host missing URIs.
+     */
+    private fun photoFileExists(photo: LocalPhoto): Boolean {
+        if (photo.isGifItem) {
+            val gifPath = photo.gifSourcePath
+            val poster = photo.croppedPhotoPath
+            return (gifPath != null && File(gifPath).exists()) ||
+                (poster != null && File(poster).exists())
+        }
+        val path: String? = photo.croppedPhotoPath ?: photo.originalPhotoPath
+        return when {
+            path != null -> File(path).exists()
+            photo.externalUri != null -> true
+            else -> false
         }
     }
 
@@ -653,6 +740,22 @@ class PhotoWidgetStorage @Inject constructor(
 
     fun getWidgetGifInterval(appWidgetId: Int): Long {
         return sharedPreferences.getWidgetGifInterval(appWidgetId = appWidgetId)
+    }
+
+    fun saveGifBatteryWarningDismissed(appWidgetId: Int, dismissed: Boolean) {
+        sharedPreferences.saveGifBatteryWarningDismissed(appWidgetId = appWidgetId, dismissed = dismissed)
+    }
+
+    fun getGifBatteryWarningDismissed(appWidgetId: Int): Boolean {
+        return sharedPreferences.getGifBatteryWarningDismissed(appWidgetId = appWidgetId)
+    }
+
+    fun saveWidgetGifAnimationPaused(appWidgetId: Int, value: Boolean) {
+        sharedPreferences.saveWidgetGifAnimationPaused(appWidgetId = appWidgetId, value = value)
+    }
+
+    fun getWidgetGifAnimationPaused(appWidgetId: Int): Boolean {
+        return sharedPreferences.getWidgetGifAnimationPaused(appWidgetId = appWidgetId)
     }
 
     fun saveWidgetDeletionTimestamp(appWidgetId: Int, timestamp: Long?) {

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
+    android:author="@string/photo_widget_home_developer"
+    android:description="@string/wallpaper_hub_live_description"
+    android:thumbnail="@mipmap/ic_launcher" />

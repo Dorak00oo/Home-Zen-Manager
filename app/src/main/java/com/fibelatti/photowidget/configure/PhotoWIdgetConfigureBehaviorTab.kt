@@ -118,8 +118,8 @@ fun PhotoWidgetConfigureBehaviorTab(
             .fillMaxSize()
             .padding(horizontal = 16.dp),
     ) {
-        val showTimerPicker: Boolean = photoWidget.photos.size > 1 && photoWidget.source != PhotoWidgetSource.GIF
-        val showGifIntervalPicker: Boolean = photoWidget.photos.size > 1 && photoWidget.source == PhotoWidgetSource.GIF
+        val showTimerPicker: Boolean = photoWidget.photos.size > 1
+        val showGifIntervalPicker: Boolean = false
         val showShufflePicker: Boolean = photoWidget.canShuffle
         val showSortPicker: Boolean = photoWidget.source == PhotoWidgetSource.DIRECTORY && !photoWidget.shuffle
 

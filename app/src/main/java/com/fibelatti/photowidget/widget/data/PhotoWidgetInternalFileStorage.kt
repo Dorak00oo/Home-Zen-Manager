@@ -13,6 +13,7 @@ import com.fibelatti.photowidget.platform.ImageFormat
 import com.fibelatti.photowidget.platform.ImageFormatDetector
 import com.fibelatti.photowidget.platform.PhotoDecoder
 import com.fibelatti.photowidget.platform.UriPermissionGrantor
+import com.fibelatti.photowidget.platform.getMaxBitmapWidgetDimension
 import com.fibelatti.photowidget.platform.getMaxCrossfadeBitmapDimension
 import com.fibelatti.photowidget.platform.runWithFileOutputStream
 import com.fibelatti.photowidget.platform.scaledToMaxDimension
@@ -107,55 +108,210 @@ class PhotoWidgetInternalFileStorage @Inject constructor(
     suspend fun newWidgetPhotosFromGif(directoryName: String, source: Uri): GifFrames {
         return withContext(Dispatchers.IO) {
             runCatching {
-                Timber.d("New widget photos from GIF %s", mapOf("source" to source, "directoryName" to directoryName))
+                Timber.d("New widget photo from GIF %s", mapOf("source" to source, "directoryName" to directoryName))
 
                 val widgetDir = getWidgetDir(directoryName = directoryName)
-                val originalPhotosDir: File = File("$widgetDir/original").apply { mkdirs() }
+                val gifId: String = UUID.randomUUID().toString()
+                val gifDir: File = File("$widgetDir/gifs/$gifId").apply { mkdirs() }
+                val framesDir: File = File("$gifDir/frames").apply { mkdirs() }
+                val originalFramesDir: File = File("$gifDir/original").apply { mkdirs() }
+                val sourceGifFile: File = File("$gifDir/source.gif")
 
-                val gifDrawable: GifDrawable = contentResolver.openAssetFileDescriptor(source, "r")
-                    ?.let(::GifDrawable)
-                    ?: return@withContext GifFrames.EMPTY
+                contentResolver.openInputStream(source)?.use { input ->
+                    sourceGifFile.runWithFileOutputStream(input::copyTo)
+                } ?: return@withContext GifFrames.EMPTY
+
+                val gifDrawable = GifDrawable(sourceGifFile)
 
                 val frameCount: Int = gifDrawable.numberOfFrames
                 val duration: Long = gifDrawable.duration.toLong()
                 Timber.d("GIF has $frameCount frames, over $duration milliseconds")
 
-                val photos = mutableListOf<LocalPhoto>()
+                if (frameCount <= 0) {
+                    gifDrawable.recycle()
+                    return@withContext GifFrames.EMPTY
+                }
+
+                val interval: Long = (duration / frameCount)
+                    .coerceIn(GifFrames.MIN_INTERVAL_MS, GifFrames.MAX_INTERVAL_MS)
+
+                File("$gifDir/interval").writeText(interval.toString())
+
+                val maxDimension: Int = context.getMaxBitmapWidgetDimension()
+                var posterPath: String? = null
 
                 for (i in 0 until frameCount) {
                     val frameBitmap = gifDrawable.seekToFrameAndGet(i)
-                    val newPhotoName = "${UUID.randomUUID()}.png"
+                    val frameName = "%04d.png".format(i)
 
-                    val originalPhoto = File("$originalPhotosDir/$newPhotoName")
-                    val croppedPhoto = File("$widgetDir/$newPhotoName")
+                    val originalFrame = File("$originalFramesDir/$frameName")
+                    val preparedFrame = File("$framesDir/$frameName")
 
-                    listOf(originalPhoto, croppedPhoto).forEach { file ->
-                        file.runWithFileOutputStream { fos ->
-                            frameBitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
-                        }
+                    // Full-size original for later re-prepare; widget-sized frames for first playback.
+                    originalFrame.runWithFileOutputStream { fos ->
+                        frameBitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
                     }
 
-                    if (originalPhoto.exists() && croppedPhoto.exists()) {
-                        photos.add(
-                            LocalPhoto(
-                                photoId = newPhotoName,
-                                croppedPhotoPath = croppedPhoto.path,
-                                originalPhotoPath = originalPhoto.path,
-                            ),
-                        )
+                    val widgetFrame: Bitmap = frameBitmap.scaledToMaxDimension(maxDimension)
+                    preparedFrame.runWithFileOutputStream { fos ->
+                        widgetFrame.compress(Bitmap.CompressFormat.PNG, 100, fos)
+                    }
+                    if (widgetFrame !== frameBitmap) {
+                        widgetFrame.recycle()
+                    }
+
+                    if (i == 0 && preparedFrame.exists()) {
+                        posterPath = preparedFrame.path
                     }
                 }
 
                 gifDrawable.recycle()
 
-                return@withContext GifFrames(
-                    frames = photos,
-                    interval = (duration / frameCount).coerceIn(GifFrames.MIN_INTERVAL_MS, GifFrames.MAX_INTERVAL_MS),
+                File("$gifDir/prepared").writeText("1")
+
+                if (posterPath == null) {
+                    return@withContext GifFrames.EMPTY
+                }
+
+                val gifPhoto = LocalPhoto(
+                    photoId = gifId,
+                    croppedPhotoPath = posterPath,
+                    originalPhotoPath = sourceGifFile.path,
+                    gifSourcePath = sourceGifFile.path,
+                    gifFrameInterval = interval,
                 )
+
+                return@withContext GifFrames(gif = gifPhoto, interval = interval)
             }.getOrElse { throwable ->
                 Timber.e(throwable, "Failed to extract GIF frames")
                 GifFrames.EMPTY
             }
+        }
+    }
+
+    suspend fun isGifPrepared(directoryName: String, gifId: String): Boolean {
+        return File("${getWidgetDir(directoryName)}/gifs/$gifId/prepared").exists()
+    }
+
+    suspend fun markGifPrepared(directoryName: String, gifId: String) {
+        File("${getWidgetDir(directoryName)}/gifs/$gifId").mkdirs()
+        File("${getWidgetDir(directoryName)}/gifs/$gifId/prepared").writeText("1")
+    }
+
+    suspend fun getGifFrameUris(directoryName: String, gifId: String): List<Uri> {
+        return withContext(Dispatchers.IO) {
+            val framesDir: File = File("${getWidgetDir(directoryName)}/gifs/$gifId/frames")
+            if (!framesDir.isDirectory) return@withContext emptyList()
+
+            framesDir.listFiles()
+                .orEmpty()
+                .filter { file ->
+                    file.isFile &&
+                        file.extension.equals("png", ignoreCase = true) &&
+                        file.length() > 0L
+                }
+                .sortedBy { it.name }
+                .mapNotNull { file -> uriPermissionGrantor(path = file.path) }
+        }
+    }
+
+    suspend fun readGifFrameInterval(directoryName: String, gifId: String): Long {
+        val intervalFile = File("${getWidgetDir(directoryName)}/gifs/$gifId/interval")
+        return intervalFile.takeIf { it.exists() }
+            ?.readText()
+            ?.trim()
+            ?.toLongOrNull()
+            ?.coerceIn(GifFrames.MIN_INTERVAL_MS, GifFrames.MAX_INTERVAL_MS)
+            ?: GifFrames.MIN_INTERVAL_MS
+    }
+
+    suspend fun enrichGifPhoto(directoryName: String, photo: LocalPhoto): LocalPhoto {
+        val gifDir = File("${getWidgetDir(directoryName)}/gifs/${photo.photoId}")
+        if (!gifDir.isDirectory) return photo
+
+        val sourceGif = File("$gifDir/source.gif")
+        val framesDir = File("$gifDir/frames")
+        val poster = framesDir.listFiles()
+            ?.filter { it.isFile && it.extension.equals("png", ignoreCase = true) }
+            ?.minByOrNull { it.name }
+
+        return photo.copy(
+            gifSourcePath = sourceGif.takeIf { it.exists() }?.path ?: photo.gifSourcePath,
+            originalPhotoPath = sourceGif.takeIf { it.exists() }?.path ?: photo.originalPhotoPath,
+            croppedPhotoPath = poster?.path ?: photo.croppedPhotoPath,
+            gifFrameInterval = readGifFrameInterval(directoryName = directoryName, gifId = photo.photoId),
+        )
+    }
+
+    suspend fun hasGifPlaylistLayout(directoryName: String): Boolean {
+        val gifsDir = File("${getWidgetDir(directoryName)}/gifs")
+        return gifsDir.isDirectory && gifsDir.list().orEmpty().isNotEmpty()
+    }
+
+    suspend fun listGifPlaylistItems(directoryName: String): List<LocalPhoto> {
+        return withContext(Dispatchers.IO) {
+            val gifsDir = File("${getWidgetDir(directoryName)}/gifs")
+            if (!gifsDir.isDirectory) return@withContext emptyList()
+
+            gifsDir.listFiles()
+                .orEmpty()
+                .filter { it.isDirectory }
+                .sortedBy { it.lastModified() }
+                .mapNotNull { gifDir ->
+                    enrichGifPhoto(
+                        directoryName = directoryName,
+                        photo = LocalPhoto(photoId = gifDir.name),
+                    ).takeIf { it.croppedPhotoPath != null }
+                        ?.let { photo ->
+                            photo.copy(
+                                launcherUri = photo.croppedPhotoPath?.let { path ->
+                                    // Grant happens in storage layer when building playlist; skip here if sync
+                                    null
+                                },
+                            )
+                        }
+                }
+        }
+    }
+
+    suspend fun migrateLegacyFramesToGif(
+        directoryName: String,
+        frames: List<LocalPhoto>,
+        interval: Long,
+    ): LocalPhoto? {
+        return withContext(Dispatchers.IO) {
+            if (frames.isEmpty()) return@withContext null
+
+            val widgetDir = getWidgetDir(directoryName = directoryName)
+            val gifId: String = UUID.randomUUID().toString()
+            val gifDir: File = File("$widgetDir/gifs/$gifId").apply { mkdirs() }
+            val framesDir: File = File("$gifDir/frames").apply { mkdirs() }
+            val originalFramesDir: File = File("$gifDir/original").apply { mkdirs() }
+
+            File("$gifDir/interval").writeText(
+                interval.coerceIn(GifFrames.MIN_INTERVAL_MS, GifFrames.MAX_INTERVAL_MS).toString(),
+            )
+
+            frames.forEachIndexed { index, frame ->
+                val frameName = "%04d.png".format(index)
+                val destPrepared = File("$framesDir/$frameName")
+                val destOriginal = File("$originalFramesDir/$frameName")
+
+                frame.croppedPhotoPath?.let { path ->
+                    val src = File(path)
+                    if (src.exists()) src.copyTo(destPrepared, overwrite = true)
+                }
+                frame.originalPhotoPath?.let { path ->
+                    val src = File(path)
+                    if (src.exists()) src.copyTo(destOriginal, overwrite = true)
+                }
+
+                // Remove legacy flat files for this frame id
+                deleteWidgetPhoto(directoryName = directoryName, photoId = frame.photoId)
+            }
+
+            enrichGifPhoto(directoryName = directoryName, photo = LocalPhoto(photoId = gifId))
+                .takeIf { it.croppedPhotoPath != null }
         }
     }
 
@@ -187,6 +343,11 @@ class PhotoWidgetInternalFileStorage @Inject constructor(
     suspend fun deleteWidgetPhoto(directoryName: String, photoId: String) {
         withContext(Dispatchers.IO) {
             val widgetDir = getWidgetDir(directoryName = directoryName)
+            val gifDir = File("$widgetDir/gifs/$photoId")
+            if (gifDir.exists()) {
+                gifDir.deleteRecursively()
+            }
+
             val originalPhotosDir = File("$widgetDir/original")
 
             with(File("$originalPhotosDir/$photoId")) {

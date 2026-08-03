@@ -18,6 +18,7 @@ data class PhotoWidgetConfigureState(
     val hasEdits: Boolean = false,
     val isDraft: Boolean = false,
     val isImportAvailable: Boolean = false,
+    val showGifBatteryWarning: Boolean = false,
 ) {
 
     sealed class Message {

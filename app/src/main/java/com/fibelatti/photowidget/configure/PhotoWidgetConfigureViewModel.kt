@@ -1,6 +1,7 @@
 package com.fibelatti.photowidget.configure
 
 import android.appwidget.AppWidgetManager
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -20,6 +21,7 @@ import com.fibelatti.photowidget.model.PhotoWidgetText
 import com.fibelatti.photowidget.model.Time
 import com.fibelatti.photowidget.model.coerceTapActions
 import com.fibelatti.photowidget.model.orderedPhotosForDisplay
+import com.fibelatti.photowidget.platform.KeepAliveService
 import com.fibelatti.photowidget.platform.savedState
 import com.fibelatti.photowidget.preferences.UserPreferencesStorage
 import com.fibelatti.photowidget.widget.DuplicatePhotoWidgetUseCase
@@ -30,6 +32,7 @@ import com.fibelatti.photowidget.widget.SanitizeTapActionsUseCase
 import com.fibelatti.photowidget.widget.SavePhotoWidgetUseCase
 import com.fibelatti.photowidget.widget.data.PhotoWidgetStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +57,7 @@ import timber.log.Timber
 @HiltViewModel
 class PhotoWidgetConfigureViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val context: Context,
     private val userPreferencesStorage: UserPreferencesStorage,
     private val photoWidgetStorage: PhotoWidgetStorage,
     loadPhotoWidgetUseCase: LoadPhotoWidgetUseCase,
@@ -192,6 +196,9 @@ class PhotoWidgetConfigureViewModel @Inject constructor(
 
     private fun updateState(photoWidget: PhotoWidget, hasEdits: Boolean) {
         val resolvedAspectRatio: PhotoWidgetAspectRatio = aspectRatio ?: photoWidget.aspectRatio
+        val showGifBatteryWarning: Boolean = photoWidget.source == PhotoWidgetSource.GIF &&
+            !photoWidgetStorage.getGifBatteryWarningDismissed(appWidgetId = effectiveWidgetId)
+
         _state.getAndUpdate { current ->
             current.copy(
                 photoWidget = photoWidget.copy(
@@ -203,8 +210,17 @@ class PhotoWidgetConfigureViewModel @Inject constructor(
                 isProcessing = photoWidget.isLoading,
                 hasEdits = hasEdits,
                 isDraft = PhotoWidget.isDraftWidgetId(effectiveWidgetId),
+                showGifBatteryWarning = showGifBatteryWarning,
             )
         }
+    }
+
+    fun dismissGifBatteryWarning() {
+        photoWidgetStorage.saveGifBatteryWarningDismissed(
+            appWidgetId = effectiveWidgetId,
+            dismissed = true,
+        )
+        _state.update { current -> current.copy(showGifBatteryWarning = false) }
     }
 
     private fun trackEdits() {
@@ -237,6 +253,9 @@ class PhotoWidgetConfigureViewModel @Inject constructor(
             photoWidgetStorage.saveWidgetSource(appWidgetId = effectiveWidgetId, source = newSource)
             photoWidgetStorage.loadWidgetPhotos(appWidgetId = effectiveWidgetId)
                 .onEach { widgetPhotos ->
+                    val showGifBatteryWarning: Boolean = newSource == PhotoWidgetSource.GIF &&
+                        !photoWidgetStorage.getGifBatteryWarningDismissed(appWidgetId = effectiveWidgetId)
+
                     _state.getAndUpdate { current ->
                         current.copy(
                             photoWidget = current.photoWidget.copy(
@@ -248,6 +267,7 @@ class PhotoWidgetConfigureViewModel @Inject constructor(
                             ),
                             selectedPhoto = widgetPhotos.current.firstOrNull(),
                             cropQueue = emptyList(),
+                            showGifBatteryWarning = showGifBatteryWarning,
                         )
                     }
                 }
@@ -341,28 +361,35 @@ class PhotoWidgetConfigureViewModel @Inject constructor(
         }
     }
 
-    fun gifPicked(source: Uri?) {
-        if (source == null) return
+    fun gifPicked(source: List<Uri>) {
+        if (source.isEmpty()) return
 
         viewModelScope.launch {
             state.first { !it.isProcessing }
 
             _state.update { current -> current.copy(isProcessing = true) }
 
-            val existingPhotos = _state.value.photoWidget.photos
-            if (existingPhotos.isNotEmpty()) {
-                photoWidgetStorage.deletePhotos(
+            // Stop home-screen playback while new GIFs are imported; save/update restarts it.
+            if (!PhotoWidget.isDraftWidgetId(effectiveWidgetId)) {
+                KeepAliveService.sendTearDownGifBroadcast(
+                    context = context,
                     appWidgetId = effectiveWidgetId,
-                    photoIds = existingPhotos.map { it.photoId },
                 )
             }
 
-            val gifFrames: GifFrames = photoWidgetStorage.newWidgetPhotosFromGif(
-                appWidgetId = effectiveWidgetId,
-                source = source,
-            )
+            val imported = source.mapNotNull { uri ->
+                val gifFrames: GifFrames = photoWidgetStorage.newWidgetPhotosFromGif(
+                    appWidgetId = effectiveWidgetId,
+                    source = uri,
+                )
+                gifFrames.gif
+            }
 
-            val message = if (gifFrames.frames.isEmpty()) {
+            val message = if (imported.isEmpty()) {
+                PhotoWidgetConfigureState.Message.UserPrompt(
+                    textRes = R.string.photo_widget_configure_import_error,
+                )
+            } else if (imported.size < source.size) {
                 PhotoWidgetConfigureState.Message.UserPrompt(
                     textRes = R.string.photo_widget_configure_import_error,
                 )
@@ -371,12 +398,39 @@ class PhotoWidgetConfigureViewModel @Inject constructor(
             }
 
             _state.getAndUpdate { current ->
+                val updatedPhotos = current.photoWidget.photos + imported
                 current.copy(
-                    photoWidget = current.photoWidget.copy(gifInterval = gifFrames.interval),
+                    photoWidget = current.photoWidget.copy(
+                        photos = updatedPhotos,
+                        currentPhoto = current.photoWidget.currentPhoto ?: imported.firstOrNull(),
+                        gifInterval = imported.lastOrNull()?.gifFrameInterval
+                            ?: current.photoWidget.gifInterval,
+                    ),
+                    selectedPhoto = current.selectedPhoto ?: imported.firstOrNull(),
                     isProcessing = false,
-                ) + gifFrames.frames + message
+                    hasEdits = true,
+                ) + message
+            }
+
+            if (imported.isNotEmpty()) {
+                photoWidgetStorage.syncWidgetPhotos(
+                    appWidgetId = effectiveWidgetId,
+                    currentPhotos = _state.value.photoWidget.photos,
+                    removedPhotos = _state.value.photoWidget.removedPhotos,
+                )
+                if (photoWidgetStorage.getCurrentPhotoId(effectiveWidgetId) == null) {
+                    photoWidgetStorage.saveDisplayedPhoto(
+                        appWidgetId = effectiveWidgetId,
+                        photoId = imported.first().photoId,
+                    )
+                }
             }
         }
+    }
+
+    fun gifPicked(source: Uri?) {
+        if (source == null) return
+        gifPicked(listOf(source))
     }
 
     fun dirPicked(source: Uri?) {

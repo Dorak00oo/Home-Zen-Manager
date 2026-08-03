@@ -7,7 +7,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.fibelatti.photowidget.R
 import com.fibelatti.photowidget.configure.appWidgetId
-import com.fibelatti.photowidget.model.PhotoWidgetSource
 import com.fibelatti.photowidget.platform.KeepAliveService
 import com.fibelatti.photowidget.widget.data.PhotoWidgetStorage
 import dagger.hilt.android.AndroidEntryPoint
@@ -35,10 +34,15 @@ class ToggleCyclingFeedbackActivity : AppCompatActivity() {
 
         val context: Context = this
         val appWidgetId: Int = intent.appWidgetId
+        val toggleGifAnimation: Boolean = intent.getBooleanExtra(EXTRA_TOGGLE_GIF_ANIMATION, false)
 
         lifecycleScope.launch {
             val previouslyPaused: Boolean? = withContext(Dispatchers.IO) {
-                togglePaused(appWidgetId = appWidgetId)
+                if (toggleGifAnimation) {
+                    toggleGifAnimationPaused(appWidgetId = appWidgetId)
+                } else {
+                    toggleCyclePaused(appWidgetId = appWidgetId)
+                }
             }
 
             if (previouslyPaused != null) {
@@ -57,32 +61,39 @@ class ToggleCyclingFeedbackActivity : AppCompatActivity() {
         }
     }
 
-    private suspend fun togglePaused(appWidgetId: Int): Boolean? {
+    private suspend fun toggleCyclePaused(appWidgetId: Int): Boolean? {
         if (photoWidgetStorage.getWidgetLockedInApp(appWidgetId = appWidgetId)) return null
 
         val paused: Boolean = photoWidgetStorage.getWidgetCyclePaused(appWidgetId = appWidgetId)
-        val source: PhotoWidgetSource = photoWidgetStorage.getWidgetSource(appWidgetId = appWidgetId)
 
-        when {
-            source == PhotoWidgetSource.GIF && paused -> {
-                KeepAliveService.sendResumeGifBroadcast(context = this, appWidgetId = appWidgetId)
-            }
-
-            source == PhotoWidgetSource.GIF -> {
-                KeepAliveService.sendPauseGifBroadcast(context = this, appWidgetId = appWidgetId)
-            }
-
-            paused -> {
-                photoWidgetAlarmManager.setup(appWidgetId = appWidgetId)
-            }
-
-            else -> {
-                photoWidgetAlarmManager.cancel(appWidgetId = appWidgetId)
-            }
+        if (paused) {
+            photoWidgetAlarmManager.setup(appWidgetId = appWidgetId)
+        } else {
+            photoWidgetAlarmManager.cancel(appWidgetId = appWidgetId)
         }
 
         photoWidgetStorage.saveWidgetCyclePaused(appWidgetId = appWidgetId, value = !paused)
 
         return paused
+    }
+
+    private fun toggleGifAnimationPaused(appWidgetId: Int): Boolean? {
+        if (photoWidgetStorage.getWidgetLockedInApp(appWidgetId = appWidgetId)) return null
+
+        val paused: Boolean = photoWidgetStorage.getWidgetGifAnimationPaused(appWidgetId = appWidgetId)
+
+        if (paused) {
+            KeepAliveService.sendResumeGifBroadcast(context = this, appWidgetId = appWidgetId)
+        } else {
+            KeepAliveService.sendPauseGifBroadcast(context = this, appWidgetId = appWidgetId)
+        }
+
+        photoWidgetStorage.saveWidgetGifAnimationPaused(appWidgetId = appWidgetId, value = !paused)
+
+        return paused
+    }
+
+    companion object {
+        const val EXTRA_TOGGLE_GIF_ANIMATION: String = "EXTRA_TOGGLE_GIF_ANIMATION"
     }
 }

@@ -101,6 +101,7 @@ import com.fibelatti.photowidget.ui.icons.Trash
 import com.fibelatti.ui.foundation.fadingEdges
 import com.fibelatti.ui.preview.PreviewAll
 import com.fibelatti.ui.theme.ExtendedTheme
+import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -140,7 +141,7 @@ fun PhotoWidgetConfigureScreen(
     )
 
     val gifPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
+        contract = ActivityResultContracts.GetMultipleContents(),
         onResult = viewModel::gifPicked,
     )
 
@@ -487,14 +488,32 @@ private fun PhotoWidgetViewer(
         )
 
         var current: LocalPhoto? by remember(selectedPhoto) { mutableStateOf(selectedPhoto) }
-        if (photoWidget.source == PhotoWidgetSource.GIF) {
-            LaunchedEffect(photoWidget.photos, photoWidget.gifInterval, selectedPhoto, isProcessing) {
-                if (photoWidget.photos.isEmpty() || isProcessing) return@LaunchedEffect
+        if (photoWidget.source == PhotoWidgetSource.GIF && selectedPhoto != null) {
+            LaunchedEffect(selectedPhoto.photoId, selectedPhoto.gifFrameInterval, isProcessing) {
+                if (isProcessing) return@LaunchedEffect
 
-                for (photo in photoWidget.photos) {
-                    delay(timeMillis = photoWidget.gifInterval)
-                    ensureActive()
-                    current = photo
+                val framesDir = selectedPhoto.croppedPhotoPath?.let { File(it).parentFile }
+                val frameFiles = framesDir
+                    ?.listFiles()
+                    .orEmpty()
+                    .filter { it.isFile && it.extension.equals("png", ignoreCase = true) }
+                    .sortedBy { it.name }
+
+                if (frameFiles.isEmpty()) {
+                    current = selectedPhoto
+                    return@LaunchedEffect
+                }
+
+                val interval = selectedPhoto.gifFrameInterval
+                    .takeIf { it > 0 }
+                    ?: photoWidget.gifInterval.coerceAtLeast(20)
+
+                while (true) {
+                    for (frame in frameFiles) {
+                        current = selectedPhoto.copy(croppedPhotoPath = frame.path)
+                        delay(timeMillis = interval)
+                        ensureActive()
+                    }
                 }
             }
         }
@@ -516,17 +535,16 @@ private fun PhotoWidgetViewer(
                     areaColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
 
-                if (photoWidget.source != PhotoWidgetSource.GIF) {
-                    EditingControls(
-                        onCropClick = { onCropClick(selectedPhoto) },
-                        onRemoveClick = { onRemoveClick(selectedPhoto) },
-                        showMoveControls = photoWidget.canSort,
-                        moveLeftEnabled = photoWidget.photos.indexOf(selectedPhoto) != 0,
-                        onMoveLeftClick = { onMoveLeftClick(selectedPhoto) },
-                        moveRightEnabled = photoWidget.photos.indexOf(selectedPhoto) < photoWidget.photos.size - 1,
-                        onMoveRightClick = { onMoveRightClick(selectedPhoto) },
-                    )
-                }
+                EditingControls(
+                    onCropClick = { onCropClick(selectedPhoto) },
+                    onRemoveClick = { onRemoveClick(selectedPhoto) },
+                    showMoveControls = photoWidget.canSort,
+                    moveLeftEnabled = photoWidget.photos.indexOf(selectedPhoto) != 0,
+                    onMoveLeftClick = { onMoveLeftClick(selectedPhoto) },
+                    moveRightEnabled = photoWidget.photos.indexOf(selectedPhoto) < photoWidget.photos.size - 1,
+                    onMoveRightClick = { onMoveRightClick(selectedPhoto) },
+                    showCrop = photoWidget.source != PhotoWidgetSource.GIF,
+                )
             }
         }
 
@@ -555,6 +573,7 @@ private fun EditingControls(
     moveRightEnabled: Boolean,
     onMoveRightClick: () -> Unit,
     modifier: Modifier = Modifier,
+    showCrop: Boolean = true,
 ) {
     val interactionSources: Array<MutableInteractionSource> = remember {
         Array(size = 4) { MutableInteractionSource() }
@@ -578,15 +597,17 @@ private fun EditingControls(
             }
         }
 
-        FilledTonalIconButton(
-            onClick = onCropClick,
-            shapes = IconButtonDefaults.shapes(),
-            interactionSource = interactionSources[1],
-        ) {
-            Icon(
-                imageVector = AppIcons.Crop,
-                contentDescription = stringResource(id = R.string.photo_widget_configure_menu_crop),
-            )
+        if (showCrop) {
+            FilledTonalIconButton(
+                onClick = onCropClick,
+                shapes = IconButtonDefaults.shapes(),
+                interactionSource = interactionSources[1],
+            ) {
+                Icon(
+                    imageVector = AppIcons.Crop,
+                    contentDescription = stringResource(id = R.string.photo_widget_configure_menu_crop),
+                )
+            }
         }
 
         FilledTonalIconButton(

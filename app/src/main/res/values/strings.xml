@@ -13,6 +13,7 @@
     <string name="photo_widget_home_new">New Widget</string>
     <string name="photo_widget_home_current">My Widgets</string>
     <string name="photo_widget_home_settings">Settings</string>
+    <string name="photo_widget_home_wallpapers">Wallpapers</string>
     <string name="photo_widget_home_section_widgets">Widgets</string>
     <string name="photo_widget_home_section_background_activity">Background activity</string>
     <string name="photo_widget_home_section_data">Data</string>
@@ -186,8 +187,8 @@
     </plurals>
 
     <plurals name="photo_widget_configure_photo_quantity_gif">
-        <item quantity="one">%d frame</item>
-        <item quantity="other">%d frames</item>
+        <item quantity="one">%d GIF</item>
+        <item quantity="other">%d GIFs</item>
     </plurals>
 
     <string name="photo_widget_configure_select_cycling_mode">Photo timer</string>
@@ -449,4 +450,26 @@
 
     <!-- Content Description -->
     <string name="photo_widget_cd_host">Material Photo home screen widget</string>
+
+    <!-- Wallpaper hub -->
+    <string name="wallpaper_hub_title">Wallpapers</string>
+    <string name="wallpaper_hub_live_description">Animated wallpapers with photos, GIFs, and videos</string>
+    <string name="wallpaper_hub_use_same">Use the same on both screens</string>
+    <string name="wallpaper_hub_tab_home">Home</string>
+    <string name="wallpaper_hub_tab_lock">Lock</string>
+    <string name="wallpaper_hub_add_photos">Photos</string>
+    <string name="wallpaper_hub_add_gifs">GIFs</string>
+    <string name="wallpaper_hub_add_videos">Videos</string>
+    <string name="wallpaper_hub_add_folder">Folder</string>
+    <string name="wallpaper_hub_empty">Add photos, GIFs, videos, or a folder to build your playlist.</string>
+    <string name="wallpaper_hub_folders">Folders</string>
+    <string name="wallpaper_hub_remove_folder">Tap to remove</string>
+    <string name="wallpaper_hub_remove">Remove</string>
+    <string name="wallpaper_hub_open_library">Browse library</string>
+    <string name="wallpaper_hub_library_title">Library (%d)</string>
+    <string name="wallpaper_hub_library_summary">%1$d imported · %2$d folders. Open the library to browse everything without loading it here.</string>
+    <string name="wallpaper_hub_behavior">Behavior</string>
+    <string name="wallpaper_hub_double_tap_hint">Double tap the wallpaper to go to the next item.</string>
+    <string name="wallpaper_hub_oem_hint">Some devices only apply live wallpapers to Home. Lock screen may use a static fallback.</string>
+    <string name="wallpaper_hub_activate">Activate wallpaper</string>
 </resources>

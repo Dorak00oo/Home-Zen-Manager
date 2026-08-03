@@ -11,7 +11,10 @@ import com.fibelatti.photowidget.widget.PhotoWidgetAlarmManager
 import com.fibelatti.photowidget.widget.PhotoWidgetCrossfadeAnimator
 import com.fibelatti.photowidget.widget.PhotoWidgetProviderActionHandler
 import com.fibelatti.photowidget.widget.PrepareCurrentPhotoUseCase
+import com.fibelatti.photowidget.widget.PrepareGifPhotosUseCase
 import com.fibelatti.photowidget.widget.SavePhotoWidgetUseCase
+import com.fibelatti.photowidget.wallpaper.WallpaperScheduler
+import com.fibelatti.photowidget.wallpaper.WallpaperStorage
 import com.fibelatti.photowidget.widget.data.PhotoWidgetStorage
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -25,6 +28,10 @@ interface PhotoWidgetEntryPoint {
     fun userPreferencesStorage(): UserPreferencesStorage
 
     fun photoWidgetStorage(): PhotoWidgetStorage
+
+    fun wallpaperStorage(): WallpaperStorage
+
+    fun wallpaperScheduler(): WallpaperScheduler
 
     fun hintStorage(): HintStorage
 
@@ -41,6 +48,8 @@ interface PhotoWidgetEntryPoint {
     fun savePhotoWidgetUseCase(): SavePhotoWidgetUseCase
 
     fun prepareCurrentPhotoUseCase(): PrepareCurrentPhotoUseCase
+
+    fun prepareGifPhotosUseCase(): PrepareGifPhotosUseCase
 
     fun cyclePhotoUseCase(): CyclePhotoUseCase
 

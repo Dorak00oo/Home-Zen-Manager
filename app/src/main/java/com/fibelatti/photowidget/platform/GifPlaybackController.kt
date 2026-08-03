@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.take
@@ -45,7 +46,8 @@ class GifPlaybackController @Inject constructor(
             val source: PhotoWidgetSource = photoWidgetStorage.getWidgetSource(appWidgetId = appWidgetId)
             if (source != PhotoWidgetSource.GIF) return@launch
 
-            val shouldPlay: Boolean = !photoWidgetStorage.getWidgetCyclePaused(appWidgetId = appWidgetId)
+            // Animation pause is independent from playlist cycling (cyclePaused).
+            val shouldPlay: Boolean = !photoWidgetStorage.getWidgetGifAnimationPaused(appWidgetId = appWidgetId)
             playbackAllowed.update { currentMap ->
                 currentMap.toMutableMap().apply { put(appWidgetId, shouldPlay) }.toMap()
             }
@@ -78,7 +80,7 @@ class GifPlaybackController @Inject constructor(
             coroutineScope.launch {
                 playbackAllowed.update { currentMap ->
                     currentMap.mapValues { (key, _) ->
-                        value && !photoWidgetStorage.getWidgetCyclePaused(appWidgetId = key)
+                        value && !photoWidgetStorage.getWidgetGifAnimationPaused(appWidgetId = key)
                     }
                 }
             }
@@ -93,10 +95,29 @@ class GifPlaybackController @Inject constructor(
         return coroutineScope.launch {
             val gifFlow: Flow<Pair<List<Uri>, Long>> = loadPhotoWidgetUseCase(appWidgetId = appWidgetId)
                 .filterNot { it.isLoading }
-                .take(1)
                 .map { photoWidget ->
-                    photoWidget.photos.mapNotNull { it.launcherUri } to photoWidget.gifInterval
+                    val current = photoWidget.currentPhoto ?: photoWidget.photos.firstOrNull()
+                    if (current == null) {
+                        emptyList<Uri>() to GifFrames.MIN_INTERVAL_MS
+                    } else {
+                        val frames: List<Uri> = photoWidgetStorage.getGifFrameUris(
+                            appWidgetId = appWidgetId,
+                            gifId = current.photoId,
+                        )
+                        val rawInterval: Long = current.gifFrameInterval
+                            .takeIf { it > 0 }
+                            ?: photoWidget.gifInterval
+                        // Heavy GIFs at 20ms flood the launcher on first decode pass and look stuck.
+                        val minInterval: Long = when {
+                            frames.size >= 40 -> 80L
+                            frames.size >= 20 -> 50L
+                            else -> GifFrames.MIN_INTERVAL_MS
+                        }
+                        frames to rawInterval.coerceAtLeast(minInterval)
+                    }
                 }
+                .filter { (frames, _) -> frames.isNotEmpty() }
+                .take(1)
             val playbackFlow: Flow<Boolean> = playbackAllowed.map { dict ->
                 dict.getOrDefault(appWidgetId, false)
             }
@@ -104,6 +125,10 @@ class GifPlaybackController @Inject constructor(
             combine(flow = gifFlow, flow2 = playbackFlow) { gif: Pair<List<Uri>, Long>, shouldPlay: Boolean ->
                 Triple(gif.first, gif.second, shouldPlay)
             }.collectLatest { (frames: List<Uri>, interval: Long, shouldPlay: Boolean) ->
+                // Let the full widget update settle before partial URI frames, otherwise the host
+                // drops/queues updates and the first pass looks lagged or frozen.
+                delay(timeMillis = STARTUP_SETTLE_MS)
+
                 while (shouldPlay && frames.isNotEmpty()) {
                     frames.forEach { frame: Uri ->
                         val remoteViews = RemoteViews(packageName, R.layout.photo_widget)
@@ -121,5 +146,7 @@ class GifPlaybackController @Inject constructor(
     private companion object {
 
         private val logger: Timber.Tree = Timber.tag("GifPlaybackController")
+
+        private const val STARTUP_SETTLE_MS: Long = 150L
     }
 }

@@ -181,6 +181,7 @@ class PhotoWidgetProvider : AppWidgetProvider() {
             val pinningCache: PhotoWidgetPinningCache = entryPoint.photoWidgetPinningCache()
             val loadPhotoWidgetUseCase: LoadPhotoWidgetUseCase = entryPoint.loadPhotoWidgetUseCase()
             val prepareCurrentPhotoUseCase: PrepareCurrentPhotoUseCase = entryPoint.prepareCurrentPhotoUseCase()
+            val prepareGifPhotosUseCase: PrepareGifPhotosUseCase = entryPoint.prepareGifPhotosUseCase()
             val exceptionReporter: ExceptionReporter = entryPoint.exceptionReporter()
             val crossfadeAnimator: PhotoWidgetCrossfadeAnimator = entryPoint.photoWidgetCrossfadeAnimator()
 
@@ -285,6 +286,20 @@ class PhotoWidgetProvider : AppWidgetProvider() {
                 try {
                     when {
                         photoWidget.source == PhotoWidgetSource.GIF -> {
+                            val currentGifId: String? = photoWidget.currentPhoto?.photoId
+                            if (currentGifId != null &&
+                                !photoWidgetStorage.isGifPrepared(appWidgetId = appWidgetId, gifId = currentGifId)
+                            ) {
+                                Timber.i("Preparing current GIF before playback %s", mapOf("gifId" to currentGifId))
+                                runCatching {
+                                    prepareGifPhotosUseCase(
+                                        appWidgetId = appWidgetId,
+                                        photoWidget = photoWidget,
+                                        gifIds = setOf(currentGifId),
+                                    )
+                                }.onFailure { Timber.w(it, "Failed to prepare current GIF") }
+                            }
+
                             appWidgetManager.updateAppWidget(appWidgetId, initialViews)
                             KeepAliveService.sendSetupGifBroadcast(context = context, appWidgetId = appWidgetId)
                         }

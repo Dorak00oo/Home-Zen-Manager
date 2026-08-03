@@ -59,7 +59,7 @@ sealed interface PhotoWidgetTapAction : Parcelable {
         override val serializedName: String = "VIEW_FULL_SCREEN"
 
         @IgnoredOnParcel
-        override val disallowedSources: List<PhotoWidgetSource> = listOf(PhotoWidgetSource.GIF)
+        override val disallowedSources: List<PhotoWidgetSource> = emptyList()
 
         @IgnoredOnParcel
         override val sharesPreferences: Boolean = true
@@ -99,7 +99,7 @@ sealed interface PhotoWidgetTapAction : Parcelable {
         override val isPhotoChangingAction: Boolean = true
 
         @IgnoredOnParcel
-        override val disallowedSources: List<PhotoWidgetSource> = listOf(PhotoWidgetSource.GIF)
+        override val disallowedSources: List<PhotoWidgetSource> = emptyList()
     }
 
     @Parcelize
@@ -115,7 +115,7 @@ sealed interface PhotoWidgetTapAction : Parcelable {
         override val isPhotoChangingAction: Boolean = true
 
         @IgnoredOnParcel
-        override val disallowedSources: List<PhotoWidgetSource> = listOf(PhotoWidgetSource.GIF)
+        override val disallowedSources: List<PhotoWidgetSource> = emptyList()
     }
 
     @Parcelize
@@ -131,7 +131,7 @@ sealed interface PhotoWidgetTapAction : Parcelable {
         override val isPhotoChangingAction: Boolean = true
 
         @IgnoredOnParcel
-        override val disallowedSources: List<PhotoWidgetSource> = listOf(PhotoWidgetSource.GIF)
+        override val disallowedSources: List<PhotoWidgetSource> = emptyList()
     }
 
     @Parcelize
@@ -225,7 +225,7 @@ sealed interface PhotoWidgetTapAction : Parcelable {
         override val isPhotoChangingAction: Boolean = true
 
         @IgnoredOnParcel
-        override val disallowedSources: List<PhotoWidgetSource> = listOf(PhotoWidgetSource.GIF)
+        override val disallowedSources: List<PhotoWidgetSource> = emptyList()
 
         @IgnoredOnParcel
         override val sharesPreferences: Boolean = true
@@ -257,7 +257,7 @@ sealed interface PhotoWidgetTapAction : Parcelable {
         override val serializedName: String = "SHARE_PHOTO"
 
         @IgnoredOnParcel
-        override val disallowedSources: List<PhotoWidgetSource> = listOf(PhotoWidgetSource.GIF)
+        override val disallowedSources: List<PhotoWidgetSource> = emptyList()
     }
 
     @Parcelize
@@ -270,7 +270,7 @@ sealed interface PhotoWidgetTapAction : Parcelable {
         override val serializedName: String = "SET_WALLPAPER"
 
         @IgnoredOnParcel
-        override val disallowedSources: List<PhotoWidgetSource> = listOf(PhotoWidgetSource.GIF)
+        override val disallowedSources: List<PhotoWidgetSource> = emptyList()
     }
 
     @Parcelize
@@ -286,7 +286,7 @@ sealed interface PhotoWidgetTapAction : Parcelable {
         override val isPhotoChangingAction: Boolean = true
 
         @IgnoredOnParcel
-        override val disallowedSources: List<PhotoWidgetSource> = listOf(PhotoWidgetSource.GIF)
+        override val disallowedSources: List<PhotoWidgetSource> = emptyList()
     }
 
     companion object {

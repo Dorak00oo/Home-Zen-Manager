@@ -26,6 +26,7 @@
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
 
     <uses-permission
         android:name="android.permission.ACCESS_NETWORK_STATE"
@@ -137,6 +138,21 @@
                 existing widgets to work. Certain OEMs stop the app since it's mostly in the
                 background, resulting in a frustrating user experience. Other foreground service
                 types aren't a good fit for this use case." />
+        </service>
+
+        <service
+            android:name=".wallpaper.ZenWallpaperService"
+            android:exported="true"
+            android:label="@string/wallpaper_hub_title"
+            android:permission="android.permission.BIND_WALLPAPER">
+
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/zen_wallpaper" />
         </service>
 
         <receiver

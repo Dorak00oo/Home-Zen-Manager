@@ -21,7 +21,8 @@ enum class PhotoWidgetSource(
     DIRECTORY(label = R.string.photo_widget_source_directory),
 
     /**
-     * The user selected one or more GIF files and the extracted frames are used as photos.
+     * The user selected one or more GIF files. Each file is a playlist item (like a photo);
+     * extracted frames are used only to animate the current GIF on the home screen.
      */
     GIF(label = R.string.photo_widget_source_gif),
 }

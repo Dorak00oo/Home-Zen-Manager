@@ -663,6 +663,29 @@ class PhotoWidgetSharedPreferences @Inject constructor(
         return sharedPreferences.getLong("${PreferencePrefix.GIF_INTERVAL}$appWidgetId", 0)
     }
 
+    fun saveGifBatteryWarningDismissed(appWidgetId: Int, dismissed: Boolean) {
+        sharedPreferences.edit {
+            putBoolean("${PreferencePrefix.GIF_BATTERY_WARNING_DISMISSED}$appWidgetId", dismissed)
+        }
+    }
+
+    fun getGifBatteryWarningDismissed(appWidgetId: Int): Boolean {
+        return sharedPreferences.getBoolean(
+            "${PreferencePrefix.GIF_BATTERY_WARNING_DISMISSED}$appWidgetId",
+            false,
+        )
+    }
+
+    fun saveWidgetGifAnimationPaused(appWidgetId: Int, value: Boolean) {
+        sharedPreferences.edit {
+            putBoolean("${PreferencePrefix.GIF_ANIMATION_PAUSED}$appWidgetId", value)
+        }
+    }
+
+    fun getWidgetGifAnimationPaused(appWidgetId: Int): Boolean {
+        return sharedPreferences.getBoolean("${PreferencePrefix.GIF_ANIMATION_PAUSED}$appWidgetId", false)
+    }
+
     fun saveWidgetDeletionTimestamp(appWidgetId: Int, timestamp: Long?) {
         sharedPreferences.edit {
             if (timestamp != null) {
@@ -834,6 +857,8 @@ class PhotoWidgetSharedPreferences @Inject constructor(
         TEXT_HAS_SHADOW(value = "appwidget_text_has_shadow_"),
 
         GIF_INTERVAL(value = "appwidget_gif_interval_"),
+        GIF_BATTERY_WARNING_DISMISSED(value = "appwidget_gif_battery_warning_dismissed_"),
+        GIF_ANIMATION_PAUSED(value = "appwidget_gif_animation_paused_"),
 
         DELETION_TIMESTAMP(value = "appwidget_deletion_timestamp_"),
         ;

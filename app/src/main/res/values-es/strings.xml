@@ -12,6 +12,7 @@
     <string name="photo_widget_home_new">Nuevo widget</string>
     <string name="photo_widget_home_current">Mis Widgets</string>
     <string name="photo_widget_home_settings">Ajustes</string>
+    <string name="photo_widget_home_wallpapers">Fondos</string>
     <string name="photo_widget_home_section_widgets">Widgets</string>
     <string name="photo_widget_home_section_background_activity">Actividad en segundo plano</string>
     <string name="photo_widget_home_section_data">Datos</string>
@@ -156,8 +157,8 @@
         <item quantity="other">%d fotos</item>
     </plurals>
     <plurals name="photo_widget_configure_photo_quantity_gif">
-        <item quantity="one">%d fotograma</item>
-        <item quantity="other">%d fotogramas</item>
+        <item quantity="one">%d GIF</item>
+        <item quantity="other">%d GIFs</item>
     </plurals>
     <string name="photo_widget_configure_select_cycling_mode">Temporizador de fotos</string>
     <string name="photo_widget_configure_cycling_mode_interval">Intervalo</string>
@@ -378,4 +379,26 @@
     <string name="warning_gif_widget_battery_usage">¡Los widgets GIF pueden consumir más batería! La app debe realizar un trabajo constante para reproducir la animación. El trabajo se pausa cuando la pantalla está apagada para ahorrar recursos, pero la app no puede detectar cuándo tu pantalla de inicio no está visible mientras usas otras apps.</string>
     <!-- Content Description -->
     <string name="photo_widget_cd_host">Widget de pantalla principal de Material Photo</string>
+
+    <!-- Wallpaper hub -->
+    <string name="wallpaper_hub_title">Fondos de pantalla</string>
+    <string name="wallpaper_hub_live_description">Fondos animados con fotos, GIFs y videos</string>
+    <string name="wallpaper_hub_use_same">Usar lo mismo en ambas</string>
+    <string name="wallpaper_hub_tab_home">Inicio</string>
+    <string name="wallpaper_hub_tab_lock">Bloqueo</string>
+    <string name="wallpaper_hub_add_photos">Fotos</string>
+    <string name="wallpaper_hub_add_gifs">GIFs</string>
+    <string name="wallpaper_hub_add_videos">Videos</string>
+    <string name="wallpaper_hub_add_folder">Carpeta</string>
+    <string name="wallpaper_hub_empty">Añade fotos, GIFs, videos o una carpeta para armar tu lista.</string>
+    <string name="wallpaper_hub_folders">Carpetas</string>
+    <string name="wallpaper_hub_remove_folder">Toca para quitar</string>
+    <string name="wallpaper_hub_remove">Quitar</string>
+    <string name="wallpaper_hub_open_library">Ver biblioteca</string>
+    <string name="wallpaper_hub_library_title">Biblioteca (%d)</string>
+    <string name="wallpaper_hub_library_summary">%1$d importadas · %2$d carpetas. Abre la biblioteca para recorrer todo sin cargarlas aquí.</string>
+    <string name="wallpaper_hub_behavior">Comportamiento</string>
+    <string name="wallpaper_hub_double_tap_hint">Doble toque en el fondo para pasar al siguiente.</string>
+    <string name="wallpaper_hub_oem_hint">En algunos dispositivos el fondo en vivo solo aplica a Inicio. Bloqueo puede usar una imagen fija.</string>
+    <string name="wallpaper_hub_activate">Activar fondo</string>
 </resources>

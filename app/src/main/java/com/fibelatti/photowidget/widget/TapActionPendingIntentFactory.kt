@@ -120,8 +120,12 @@ object TapActionPendingIntentFactory {
 
             is PhotoWidgetTapAction.ToggleCycling, is PhotoWidgetTapAction.ToggleGifPlayback -> {
                 val intent = Intent(context, ToggleCyclingFeedbackActivity::class.java).apply {
-                    setIdentifierCompat("$appWidgetId")
+                    setIdentifierCompat("$appWidgetId-${tapAction.serializedName}")
                     this.appWidgetId = appWidgetId
+                    putExtra(
+                        ToggleCyclingFeedbackActivity.EXTRA_TOGGLE_GIF_ANIMATION,
+                        tapAction is PhotoWidgetTapAction.ToggleGifPlayback,
+                    )
                 }
                 return PendingIntent.getActivity(
                     /* context = */ context,
